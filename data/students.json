@@ -1,0 +1,26 @@
+{
+  "SV001": {
+    "name": "Nguyễn Văn An",
+    "major": "Công nghệ thông tin",
+    "gpa_semester": 3.35,
+    "conduct_score": 85,
+    "discipline": "không",
+    "failed_courses": 0,
+    "credits_registered": 16,
+    "current_semester": "HK1 2026-2027",
+    "leave_history": [{"semester": "HK1 2025-2026", "reason": "ốm đau"}],
+    "total_leave_semesters": 1
+  },
+  "SV002": {
+    "name": "Trần Thị Bình",
+    "major": "Điện tử viễn thông",
+    "gpa_semester": 2.1,
+    "conduct_score": 70,
+    "discipline": "cảnh cáo",
+    "failed_courses": 1,
+    "credits_registered": 12,
+    "current_semester": "HK1 2026-2027",
+    "leave_history": [],
+    "total_leave_semesters": 0
+  }
+}

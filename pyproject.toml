@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentic-rag"
+version = "0.1.0"
+description = "Agentic RAG học tập: router + ReAct + plan-and-execute + critic, không dùng framework"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "python-dotenv>=1.0"]
+
+[project.optional-dependencies]
+gemini = ["google-genai>=1.0"]
+anthropic = ["anthropic>=0.40"]
+local-models = ["sentence-transformers>=3.0"]   # embedding BGE-M3 + reranker bge-reranker-v2-m3
+pg = ["psycopg[binary]>=3.1", "pgvector>=0.3"]
+api = ["fastapi>=0.110", "uvicorn>=0.29"]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[project.scripts]
+agentic-rag = "agentic_rag.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

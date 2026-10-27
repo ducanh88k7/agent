@@ -1,0 +1,70 @@
+{
+  "q": "Nộp đơn xin bảo lưu trước ngày bắt đầu học kỳ bao lâu?",
+  "expect": [
+    "Điều 12"
+  ]
+}
+{
+  "q": "Sinh viên bị kỷ luật cảnh cáo có được bảo lưu không?",
+  "expect": [
+    "Điều 12"
+  ]
+}
+{
+  "q": "Học phí ngành công nghệ thông tin mỗi tín chỉ bao nhiêu?",
+  "expect": [
+    "Điều 1. Mức học phí"
+  ]
+}
+{
+  "q": "Đóng học phí muộn bị phạt thế nào?",
+  "expect": [
+    "Điều 2. Thời hạn"
+  ]
+}
+{
+  "q": "Điều kiện để được học bổng khuyến khích học tập",
+  "expect": [
+    "Điều 3. Điều kiện xét học bổng"
+  ]
+}
+{
+  "q": "Học bổng loại xuất sắc bằng bao nhiêu phần trăm học phí?",
+  "expect": [
+    "Điều 4. Mức học bổng"
+  ]
+}
+{
+  "q": "Mấy giờ ký túc xá đóng cổng?",
+  "expect": [
+    "Điều 3. Giờ giấc"
+  ]
+}
+{
+  "q": "Phí ở ký túc xá phòng 4 người là bao nhiêu?",
+  "expect": [
+    "Điều 2. Phí ở"
+  ]
+}
+{
+  "q": "Rút học phần sau 2 tuần đầu thì bị ghi điểm gì?",
+  "expect": [
+    "Điều 9"
+  ]
+}
+{
+  "q": "Thôi học rồi muốn học lại thì làm thế nào?",
+  "expect": [
+    "Điều 13"
+  ]
+}
+{
+  "q": "Khi nào sinh viên bị buộc thôi học vì cảnh báo học tập?",
+  "expect": [
+    "Điều 14"
+  ]
+}
+{
+  "q": "Cách nấu phở bò ngon",
+  "expect": []
+}

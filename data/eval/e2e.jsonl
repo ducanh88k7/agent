@@ -1,0 +1,74 @@
+{
+  "q": "Chào bạn",
+  "user": "SV001",
+  "expect_route": [
+    "direct"
+  ],
+  "expect_tools": [],
+  "must_contain": []
+}
+{
+  "q": "Nộp đơn xin bảo lưu trước ngày bắt đầu học kỳ bao lâu?",
+  "user": "SV001",
+  "expect_route": [
+    "rag",
+    "agent"
+  ],
+  "expect_tools": [],
+  "must_contain": [
+    "2 tuần"
+  ]
+}
+{
+  "q": "Em muốn bảo lưu học kỳ bắt đầu ngày 01/02/2027, hạn chót nộp đơn là ngày nào?",
+  "user": "SV001",
+  "expect_route": [
+    "agent",
+    "plan"
+  ],
+  "expect_tools": [
+    "date_math"
+  ],
+  "must_contain": [
+    "18/01/2027"
+  ]
+}
+{
+  "q": "Em (SV001) đăng ký 16 tín chỉ thì có được học bổng không và được bao nhiêu tiền?",
+  "user": "SV001",
+  "expect_route": [
+    "agent",
+    "plan"
+  ],
+  "expect_tools": [
+    "get_student_record",
+    "calculate"
+  ],
+  "must_contain": [
+    "8.320.000"
+  ]
+}
+{
+  "q": "Em (SV002) có được bảo lưu không?",
+  "user": "SV002",
+  "expect_route": [
+    "agent",
+    "plan"
+  ],
+  "expect_tools": [
+    "get_student_record"
+  ],
+  "must_contain": [
+    "không"
+  ]
+}
+{
+  "q": "Trường có học bổng cho sinh viên nghiên cứu khoa học không?",
+  "user": "SV001",
+  "expect_route": [
+    "rag",
+    "agent"
+  ],
+  "expect_tools": [],
+  "must_contain": []
+}
