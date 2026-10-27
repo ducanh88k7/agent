@@ -55,6 +55,8 @@ class Settings:
     index_dir: str = ".index"
     docs_dir: str = "data/docs"
     students_path: str = "data/students.json"
+    student_source: str = "json"  # json | postgres
+    students_database_url: str | None = None  # vd tài khoản chỉ-đọc; để trống = dùng DATABASE_URL
     trace_dir: str = "runs"
     # --- Retrieval ---
     reranker: str = "lexical"  # none | lexical | cross-encoder
@@ -104,6 +106,8 @@ class Settings:
             index_dir=_get("INDEX_DIR", ".index"),
             docs_dir=_get("DOCS_DIR", "data/docs"),
             students_path=_get("STUDENTS_PATH", "data/students.json"),
+            student_source=_get("STUDENT_SOURCE", "json"),
+            students_database_url=os.getenv("STUDENTS_DATABASE_URL") or None,
             trace_dir=_get("TRACE_DIR", "runs"),
             reranker=rr,
             reranker_model=_get("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3"),

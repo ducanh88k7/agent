@@ -130,3 +130,17 @@ PostgreSQL 16 + pgvector 0.6.0 thật; hai kịch bản demo offline chạy tr�
 3. Chuyển sang `EMBEDDING_PROVIDER=gemini|sentence-transformers` + `RERANKER=cross-encoder`, so điểm với baseline.
 4. Thêm LLM-as-judge vào `eval-e2e`, theo dõi chi phí/độ trễ mỗi route.
 5. Nâng cấp multi-agent hoặc chuyển sang framework: xem `docs/UPGRADE_PATH.md`.
+
+## 9. Dữ liệu sinh viên trong PostgreSQL
+
+Mặc định `get_student_record` đọc `data/students.json`. Để đọc từ PostgreSQL:
+
+```bash
+python -m agentic_rag.cli load-students      # áp dụng db/schema.sql rồi nạp students.json (chạy lại nhiều lần an toàn)
+# .env:  STUDENT_SOURCE=postgres
+```
+
+- Bảng `students` + `leave_history` (tổng số học kỳ bảo lưu được **đếm**, không lưu trùng).
+- Tool chỉ biết giao diện `StudentRepository.get(student_id)` (`students.py`): đổi nguồn không phải sửa tool hay agent.
+- **Nên** tạo tài khoản chỉ-đọc cho agent: `db/readonly_role.sql`, rồi đặt `STUDENTS_DATABASE_URL`.
+- Thực tế dữ liệu sinh viên thường nằm trong hệ thống của trường: viết thêm một lớp repo gọi API/DB đó (cùng giao diện `get`).

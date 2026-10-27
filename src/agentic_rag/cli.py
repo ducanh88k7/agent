@@ -41,6 +41,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("-v", "--verbose", action="store_true", help="In trace từng bước")
     p = sub.add_parser("eval-retrieval"); p.add_argument("--file", default="data/eval/retrieval.jsonl")
     p = sub.add_parser("eval-e2e"); p.add_argument("--file", default="data/eval/e2e.jsonl"); p.add_argument("-v", "--verbose", action="store_true")
+    p = sub.add_parser("load-students", help="Nạp students.json vào PostgreSQL"); p.add_argument("--file", default=None)
     p = sub.add_parser("serve"); p.add_argument("--port", type=int, default=8000)
     p = sub.add_parser("trace", help="Xem lại một trace đã lưu"); p.add_argument("trace_id")
     a = ap.parse_args(argv)
@@ -50,6 +51,11 @@ def main(argv: list[str] | None = None) -> int:
         path = Path(settings.trace_dir) / f"{a.trace_id}.jsonl"
         for line in path.read_text("utf-8").splitlines():
             print(line)
+        return 0
+    if a.cmd == "load-students":
+        from .students import load_students_to_pg
+        n = load_students_to_pg(settings.students_database_url or settings.database_url, a.file or settings.students_path)
+        print(f"Đã nạp {n} sinh viên vào PostgreSQL. Đặt STUDENT_SOURCE=postgres trong .env để agent đọc từ đó.")
         return 0
     if a.cmd == "serve":
         import uvicorn
