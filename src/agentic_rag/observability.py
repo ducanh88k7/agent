@@ -6,6 +6,8 @@ import threading
 import time
 import uuid
 from pathlib import Path
+from langfuse import Langfuse
+import os
 
 
 class Tracer:
@@ -15,8 +17,13 @@ class Tracer:
         self.events: list[dict] = []
         self._t0 = time.monotonic()
         self._lock = threading.Lock()
+        self.langfuse = Langfuse() if os.getenv("LANGFUSE_PUBLIC_KEY") else None
+        self.trace = self.langfuse.trace(name="agentic_rag", id=self.trace_id) if self.langfuse else None
 
     def event(self, kind: str, **data) -> None:
+         # Khi có tool call hoặc LLM call, push một span lên Langfuse
+        if self.trace:
+            self.trace.span(name=kind, metadata=data)
         ev = {"t": round(time.monotonic() - self._t0, 2), "kind": kind, **data}
         with self._lock:
             self.events.append(ev)
