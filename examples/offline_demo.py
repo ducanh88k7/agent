@@ -32,6 +32,7 @@ def find_id(messages, needle: str) -> str:
 
 def make_app(tmp: str | None = None, **over):
     s = replace(Settings.from_env(), llm_provider="mock", embedding_provider="hash", embedding_model="hash", vector_store="memory",
+                student_source="json", session_store="memory",
                 index_dir=tmp or tempfile.mkdtemp(), trace_dir=tmp or tempfile.mkdtemp(), docs_dir=str(ROOT / "data/docs"),
                 students_path=str(ROOT / "data/students.json"), today="2026-12-20", **over)
     pipe = build_pipeline(s)

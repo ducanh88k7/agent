@@ -1,9 +1,13 @@
 """Điều phối một lượt hỏi: guardrail -> router -> (direct | rag | agent | plan | clarify) -> kiểm tra trích dẫn + critic -> trả lời."""
 from __future__ import annotations
 
+import json
 import logging
+import re
+import time
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Any, Iterator
 
 from ..llm.base import LLMClient, LLMError, Message
 from ..observability import Tracer
@@ -14,12 +18,22 @@ from .critic import Critic
 from .evidence import EvidenceStore
 from .guardrails import Budget, sanitize_user_input
 from .memory import Session
-from .planner import PlanExecutor, Planner, synthesize
+from .planner import PlanExecutor, Planner, synthesize, synthesize_stream
 from .react import AgentSpec, ReActAgent
 from .router import Router
 
 log = logging.getLogger(__name__)
 CAVEAT = "\n\n_Lưu ý: một số ý trong câu trả lời có thể chưa được tài liệu xác nhận đầy đủ. Vui lòng kiểm tra lại với phòng Đào tạo._"
+
+
+@dataclass
+class StreamEvent:
+    event: str  # "status" | "token" | "done" | "error"
+    data: dict[str, Any]
+
+    def to_sse(self) -> str:
+        payload = json.dumps(self.data, ensure_ascii=False)
+        return f"event: {self.event}\ndata: {payload}\n\n"
 
 
 @dataclass
@@ -94,12 +108,162 @@ class AgenticRAG:
                       {"llm_calls": budget.llm_calls, "tool_calls": budget.tool_calls, "input_tokens": u.input_tokens,
                        "output_tokens": u.output_tokens}, tracer.events)
 
+    def ask_stream(self, question: str, session: Session | None = None, *, user_id: str | None = None,
+                   confirm=None, verbose: bool = False) -> Iterator[StreamEvent]:
+        t0 = time.monotonic()
+        first_token_time: float | None = None
+
+        def mark_first_token():
+            nonlocal first_token_time
+            if first_token_time is None:
+                first_token_time = time.monotonic()
+
+        s = self.s
+        session = session or Session(user_id=user_id, max_turns=s.history_turns)
+        user_id = user_id or session.user_id
+        tracer = Tracer(verbose=verbose, sink_dir=s.trace_dir)
+        budget = Budget.from_settings(s)
+        evidence = EvidenceStore()
+        today = date.fromisoformat(s.today) if s.today else date.today()
+        ctx = ToolContext(evidence=evidence, settings=s, today=today, user_id=user_id, confirm=confirm)
+        ctx.extras["budget"] = budget
+        ctx.extras["tracer"] = tracer
+        question = sanitize_user_input(question)
+        warnings: list[str] = []
+        full_text_chunks: list[str] = []
+        route = "error"
+
+        try:
+            if not question:
+                yield StreamEvent("status", {"stage": "clarify", "route": "clarify"})
+                mark_first_token()
+                msg = "Bạn muốn hỏi điều gì?"
+                yield StreamEvent("token", {"chunk": msg})
+                ttft_ms = round((first_token_time - t0) * 1000, 2)
+                total_time_ms = round((time.monotonic() - t0) * 1000, 2)
+                yield StreamEvent("done", {"answer": msg, "route": "clarify", "sources": [], "warnings": [],
+                                           "ttft_ms": ttft_ms, "total_time_ms": total_time_ms, "session_id": session.id,
+                                           "trace_id": tracer.trace_id, "usage": {}})
+                return
+
+            history = session.history()
+            yield StreamEvent("status", {"stage": "routing", "message": "Đang định tuyến câu hỏi..."})
+            decision = Router(self.llm, s, self.registry.describe(), tracer).route(question, history)
+            if decision.usage:
+                budget.charge_llm(decision.usage)
+            route, q = decision.route, decision.standalone_question
+
+            yield StreamEvent("status", {"stage": "routed", "route": route, "standalone_question": q, "reason": decision.reason})
+
+            if route == "clarify":
+                text = decision.clarifying_question or "Bạn có thể nói rõ hơn được không?"
+                mark_first_token()
+                yield StreamEvent("token", {"chunk": text})
+                full_text_chunks.append(text)
+            elif route == "direct":
+                yield StreamEvent("status", {"stage": "generating", "message": "Đang trả lời trực tiếp..."})
+                for chunk in self._direct_stream(question, history, ctx, budget):
+                    mark_first_token()
+                    yield StreamEvent("token", {"chunk": chunk})
+                    full_text_chunks.append(chunk)
+            elif route == "rag":
+                yield StreamEvent("status", {"stage": "retrieving", "query": q})
+                res = self.pipeline.retrieve(q)
+                tracer.event("retrieve", query=q, found=len(res.passages), best=res.best_score,
+                             **{k: v for k, v in res.debug.items() if k in ("fused", "reranked")})
+                yield StreamEvent("status", {"stage": "retrieved", "passages_found": len(res.passages), "best_score": res.best_score})
+                if not res.passages:
+                    msg = "Mình không tìm thấy thông tin này trong tài liệu hiện có. Bạn có thể hỏi lại cụ thể hơn hoặc liên hệ phòng Đào tạo để được hỗ trợ."
+                    mark_first_token()
+                    yield StreamEvent("token", {"chunk": msg})
+                    full_text_chunks.append(msg)
+                else:
+                    yield StreamEvent("status", {"stage": "generating", "message": "Đang tổng hợp thông tin từ tài liệu..."})
+                    for chunk in self._rag_stream(q, res.passages, ctx, budget):
+                        mark_first_token()
+                        yield StreamEvent("token", {"chunk": chunk})
+                        full_text_chunks.append(chunk)
+            elif route == "plan":
+                yield StreamEvent("status", {"stage": "planning", "message": "Đang lập kế hoạch..."})
+                planner = Planner(self.llm, self.s, self.registry.describe(), tracer)
+                steps = planner.make_plan(q, budget)
+                yield StreamEvent("status", {"stage": "plan_steps", "steps": [{"id": st.id, "goal": st.goal, "tool": st.tool_hint} for st in steps]})
+                results = PlanExecutor(self.llm, self.s, self.registry, planner, tracer).run(q, steps, ctx, budget)
+                yield StreamEvent("status", {"stage": "synthesizing", "message": "Đang tổng hợp câu trả lời..."})
+                for chunk in synthesize_stream(self.llm, self.s, q, results, ctx, budget):
+                    mark_first_token()
+                    yield StreamEvent("token", {"chunk": chunk})
+                    full_text_chunks.append(chunk)
+            else:
+                route = "agent"
+                yield StreamEvent("status", {"stage": "agent", "message": "Agent đang thực thi (ReAct)..."})
+                text = self._agent(q, history, ctx, tracer, budget)
+                mark_first_token()
+                for w in re.split(r"(\s+)", text):
+                    if w:
+                        yield StreamEvent("token", {"chunk": w})
+                full_text_chunks.append(text)
+
+            final_text = "".join(full_text_chunks)
+            final_text, w = self._finalize(q, final_text, route, ctx, tracer, budget)
+            warnings += w
+        except LLMError as e:
+            log.exception("LLM error")
+            tracer.event("error", type="LLMError", message=str(e))
+            err_msg = "Xin lỗi, hệ thống AI đang gặp sự cố. Bạn vui lòng thử lại sau."
+            mark_first_token()
+            yield StreamEvent("token", {"chunk": err_msg})
+            final_text, warnings = err_msg, ["llm_error"]
+        except Exception as e:
+            log.exception("Unhandled error")
+            tracer.event("error", type=type(e).__name__, message=str(e))
+            err_msg = "Xin lỗi, đã có lỗi khi xử lý câu hỏi. Bạn vui lòng thử lại."
+            mark_first_token()
+            yield StreamEvent("token", {"chunk": err_msg})
+            final_text, warnings = err_msg, ["internal_error"]
+        else:
+            session.add_turn(question, final_text)
+
+        tracer.flush()
+        total_time_ms = round((time.monotonic() - t0) * 1000, 2)
+        ttft_ms = round((first_token_time - t0) * 1000, 2) if first_token_time else total_time_ms
+        u = budget.usage
+
+        gen_duration_s = (total_time_ms - ttft_ms) / 1000.0
+        tps = round(u.output_tokens / gen_duration_s, 2) if (gen_duration_s > 0.05 and u.output_tokens > 0) else None
+
+        yield StreamEvent("done", {
+            "answer": final_text,
+            "route": route,
+            "sources": evidence.sources_for(final_text),
+            "warnings": warnings,
+            "ttft_ms": ttft_ms,
+            "total_time_ms": total_time_ms,
+            "tokens_per_second": tps,
+            "session_id": session.id,
+            "trace_id": tracer.trace_id,
+            "usage": {"llm_calls": budget.llm_calls, "tool_calls": budget.tool_calls, "input_tokens": u.input_tokens, "output_tokens": u.output_tokens}
+        })
+
     # ------------------------------------------------------------------ các route
     def _direct(self, question, history, ctx, budget) -> str:
         resp = self.llm.chat([*history, Message("user", question)], system=prompts.direct_system(ctx.today.isoformat(), self.s.domain),
                              model=self.s.fast_model, max_tokens=self.s.max_output_tokens)
         budget.charge_llm(resp.usage)
         return resp.text.strip()
+
+    def _direct_stream(self, question, history, ctx, budget):
+        for chunk in self.llm.chat_stream([*history, Message("user", question)],
+                                          system=prompts.direct_system(ctx.today.isoformat(), self.s.domain),
+                                          model=self.s.fast_model, max_tokens=self.s.max_output_tokens):
+            yield chunk
+
+    def _rag_stream(self, q, passages, ctx, budget):
+        blocks = "\n".join(f'<document id="{ctx.evidence.add(p)}" source="{p.label}">\n{p.text}\n</document>' for p in passages)
+        for chunk in self.llm.chat_stream([Message("user", f"<question>{q}</question>\n{blocks}")],
+                                          system=prompts.rag_answer_system(ctx.today.isoformat(), self.s.domain),
+                                          model=self.s.main_model, max_tokens=self.s.max_output_tokens):
+            yield chunk
 
     def _rag(self, q, ctx, tracer, budget) -> str:
         """Pipeline cố định (Advanced RAG): retrieve -> trả lời bám tài liệu. Rẻ, nhanh, dễ đoán."""

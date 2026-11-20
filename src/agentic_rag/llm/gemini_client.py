@@ -89,3 +89,26 @@ class GeminiClient(LLMClient):
         usage = Usage(getattr(um, "prompt_token_count", 0) or 0,
                       (getattr(um, "candidates_token_count", 0) or 0) + (getattr(um, "thoughts_token_count", 0) or 0), 1)
         return LLMResponse(text="".join(text), tool_calls=calls, usage=usage, raw=content)
+
+    def _chat_stream(self, messages, system, tools, model, max_tokens, temperature):
+        from google.genai import types
+
+        cfg: dict = {"max_output_tokens": max_tokens}
+        if system:
+            cfg["system_instruction"] = system
+        if temperature is not None:
+            cfg["temperature"] = temperature
+        try:
+            response = self.client.models.generate_content_stream(
+                model=model,
+                contents=self._convert(messages, types),
+                config=types.GenerateContentConfig(**cfg),
+            )
+            for chunk in response:
+                if getattr(chunk, "text", None):
+                    yield chunk.text
+        except Exception:
+            resp = self._chat(messages, system, tools, model, max_tokens, temperature, False)
+            if resp.text:
+                for w in resp.text.split(" "):
+                    yield w + " "

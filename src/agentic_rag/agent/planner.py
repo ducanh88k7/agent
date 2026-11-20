@@ -144,3 +144,10 @@ def synthesize(llm: LLMClient, settings, question: str, results: list[StepResult
                     system=prompts.synth_system(ctx.today.isoformat()), model=settings.main_model, max_tokens=settings.max_output_tokens)
     budget.charge_llm(resp.usage)
     return resp.text.strip()
+
+
+def synthesize_stream(llm: LLMClient, settings, question: str, results: list[StepResult], ctx: ToolContext, budget: Budget):
+    body = "\n".join(f"[{r.id}] ({r.status}) {r.goal}\n{r.answer}" for r in results)
+    for chunk in llm.chat_stream([Message("user", f"<question>{question}</question>\n<step_results>\n{body}\n</step_results>")],
+                                 system=prompts.synth_system(ctx.today.isoformat()), model=settings.main_model, max_tokens=settings.max_output_tokens):
+        yield chunk

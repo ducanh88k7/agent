@@ -9,17 +9,17 @@ import os
 from dataclasses import replace
 
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from .agent.memory import SessionStore
+from .agent.memory import SessionStore, make_session_store
 from .config import Settings
 from .factory import build_app
 
 settings = replace(Settings.from_env(), enable_write_tools=False)
 app = FastAPI(title="Agentic RAG", version="0.1.0")
 _engine = None
-_sessions = SessionStore(settings.history_turns)
+_sessions = make_session_store(settings)
 
 
 def engine():
@@ -42,7 +42,7 @@ async def http_error(_: Request, exc: HTTPException):
 @app.get("/health")
 def health():
     e = engine()
-    return {"status": "ok", "chunks": e.pipeline.store.count(), "llm": settings.llm_provider}
+    return {"status": "ok", "chunks": e.pipeline.store.count(), "llm": settings.llm_provider, "session_store": settings.session_store}
 
 
 @app.post("/chat")
@@ -55,3 +55,27 @@ def chat(req: ChatRequest, x_user_id: str | None = Header(default=None), x_api_k
         raise HTTPException(403, "Session không thuộc về người dùng này")
     ans = engine().ask(req.message, session, user_id=x_user_id)
     return {**ans.to_dict(), "session_id": session.id}
+
+
+@app.post("/chat/stream")
+def chat_stream(req: ChatRequest, x_user_id: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
+    expected = os.getenv("API_KEY")
+    if expected and x_api_key != expected:
+        raise HTTPException(401, "API key không hợp lệ")
+    session = _sessions.get(req.session_id, x_user_id)
+    if session.user_id != x_user_id:
+        raise HTTPException(403, "Session không thuộc về người dùng này")
+
+    def event_generator():
+        for event in engine().ask_stream(req.message, session, user_id=x_user_id):
+            yield event.to_sse()
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

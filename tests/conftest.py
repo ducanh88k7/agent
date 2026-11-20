@@ -18,6 +18,7 @@ from agentic_rag.retrieval import build_pipeline  # noqa: E402
 @pytest.fixture()
 def settings(tmp_path):
     return replace(Settings.from_env(), llm_provider="mock", embedding_provider="hash", embedding_model="hash", vector_store="memory",
+                   student_source="json", session_store="memory",
                    reranker="lexical", rerank_threshold=None, index_dir=str(tmp_path / "idx"), trace_dir=str(tmp_path / "runs"),
                    docs_dir=str(ROOT / "data/docs"), students_path=str(ROOT / "data/students.json"), today="2026-12-20")
 

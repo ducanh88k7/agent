@@ -21,3 +21,13 @@ CREATE TABLE IF NOT EXISTS leave_history (
     reason      text,
     UNIQUE (student_id, semester)
 );
+
+
+-- Lưu trữ phiên hội thoại ngắn hạn (phục vụ multi-worker API và không mất phiên khi restart).
+CREATE TABLE IF NOT EXISTS chat_sessions (
+    session_id  text PRIMARY KEY,
+    user_id     text,
+    turns       jsonb NOT NULL DEFAULT '[]'::jsonb,
+    created_at  timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

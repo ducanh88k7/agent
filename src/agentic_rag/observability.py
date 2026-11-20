@@ -5,9 +5,13 @@ import json
 import threading
 import time
 import uuid
-from pathlib import Path
-from langfuse import Langfuse
 import os
+from pathlib import Path
+
+try:
+    from langfuse import Langfuse
+except ImportError:
+    Langfuse = None
 
 
 class Tracer:
@@ -17,13 +21,22 @@ class Tracer:
         self.events: list[dict] = []
         self._t0 = time.monotonic()
         self._lock = threading.Lock()
-        self.langfuse = Langfuse() if os.getenv("LANGFUSE_PUBLIC_KEY") else None
+        self.langfuse = (
+            Langfuse()
+            if (
+                Langfuse is not None
+                and os.getenv("LANGFUSE_PUBLIC_KEY")
+                and os.getenv("LANGFUSE_SECRET_KEY")
+            )
+            else None
+        )
         self.trace = self.langfuse.trace(name="agentic_rag", id=self.trace_id) if self.langfuse else None
 
     def event(self, kind: str, **data) -> None:
          # Khi có tool call hoặc LLM call, push một span lên Langfuse
         if self.trace:
-            self.trace.span(name=kind, metadata=data)
+            span = self.trace.span(name=kind, metadata=data)
+        span.end()
         ev = {"t": round(time.monotonic() - self._t0, 2), "kind": kind, **data}
         with self._lock:
             self.events.append(ev)
@@ -44,6 +57,17 @@ class Tracer:
         with path.open("w", encoding="utf-8") as f:
             for ev in self.events:
                 f.write(json.dumps(ev, ensure_ascii=False, default=str) + "\n")
+        # Close Langfuse trace and shutdown client if used
+        if self.trace:
+            try:
+                self.trace.end()
+            except Exception:
+                pass
+        if self.langfuse:
+            try:
+                self.langfuse.shutdown()
+            except Exception:
+                pass
         return str(path)
 
     def count(self, kind: str) -> int:

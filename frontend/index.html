@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Agentic RAG Demo</title>
+  <style>
+    body {font-family: Arial, sans-serif; margin: 2rem;}
+    #log {white-space: pre-wrap; border: 1px solid #ccc; padding: 1rem; height: 300px; overflow-y: auto;}
+    button {margin-top: 0.5rem;}
+  </style>
+</head>
+<body>
+  <h1>Agentic RAG Chat (SSE)</h1>
+  <textarea id="msg" rows="3" cols="60" placeholder="Nhập câu hỏi..."></textarea><br />
+  <button id="send">Gửi</button>
+  <h2>Kết quả</h2>
+  <div id="log"></div>
+
+  <script>
+    const logDiv = document.getElementById('log');
+    const sendBtn = document.getElementById('send');
+    const msgInput = document.getElementById('msg');
+
+    sendBtn.onclick = () => {
+      const message = msgInput.value.trim();
+      if (!message) return;
+      logDiv.textContent = '';
+      const es = new EventSource(`/chat/stream?message=${encodeURIComponent(message)}`);
+      es.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          // Show raw event JSON; could format nicer
+          logDiv.textContent += JSON.stringify(data, null, 2) + '\n';
+          // If server sent a finish flag, close connection
+          if (data.kind === 'assistant' && data.metadata?.finished) {
+            es.close();
+          }
+        } catch (_) {
+          logDiv.textContent += e.data + '\n';
+        }
+      };
+      es.onerror = () => { es.close(); };
+    };
+  </script>
+</body>
+</html>

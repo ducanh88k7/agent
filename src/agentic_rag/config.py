@@ -51,6 +51,7 @@ class Settings:
     embedding_dim: int = 768  # pgvector HNSW chỉ index được vector <= 2000 chiều
     # --- Lưu trữ ---
     vector_store: str = "memory"  # memory | pgvector
+    session_store: str = "memory"  # memory | postgres
     database_url: str = "postgresql://postgres:postgres@localhost:5432/agentic_rag"
     index_dir: str = ".index"
     docs_dir: str = "data/docs"
@@ -102,6 +103,7 @@ class Settings:
             embedding_model=_get("EMBEDDING_MODEL", _EMBED_MODELS.get(emb, "hash")),
             embedding_dim=_int("EMBEDDING_DIM", 768),
             vector_store=_get("VECTOR_STORE", "memory"),
+            session_store=_get("SESSION_STORE", "memory"),
             database_url=_get("DATABASE_URL", cls.database_url),
             index_dir=_get("INDEX_DIR", ".index"),
             docs_dir=_get("DOCS_DIR", "data/docs"),

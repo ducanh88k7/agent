@@ -91,6 +91,20 @@ class LLMClient(ABC):
         return retry_call(lambda: self._chat(messages, system, tools, model, max_tokens, temperature, json_mode),
                           sleep=self._sleep)
 
+    def _chat_stream(self, messages: list[Message], system: str, tools: list[ToolSpec] | None, model: str,
+                     max_tokens: int, temperature: float | None):
+        resp = self._chat(messages, system, tools, model, max_tokens, temperature, json_mode=False)
+        if resp.text:
+            words = re.split(r"(\s+)", resp.text)
+            for w in words:
+                if w:
+                    yield w
+
+    def chat_stream(self, messages: list[Message], *, system: str = "", tools: list[ToolSpec] | None = None,
+                    model: str | None = None, max_tokens: int = 2048, temperature: float | None = None):
+        model = model or self.default_model
+        return self._chat_stream(messages, system, tools, model, max_tokens, temperature)
+
 
 # ---------------------------------------------------------------- JSON có cấu trúc
 def extract_json(text: str) -> Any:

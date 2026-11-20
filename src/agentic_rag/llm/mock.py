@@ -40,5 +40,12 @@ class MockLLM(LLMClient):
         step = self.script.pop(0)
         return step(messages, system, tools) if callable(step) else step
 
+    def _chat_stream(self, messages, system, tools, model, max_tokens, temperature):
+        resp = self._chat(messages, system, tools, model, max_tokens, temperature, False)
+        if resp.text:
+            parts = resp.text.split(" ")
+            for i, p in enumerate(parts):
+                yield p if i == len(parts) - 1 else p + " "
+
     def assert_done(self) -> None:
         assert not self.script, f"MockLLM còn {len(self.script)} bước kịch bản chưa dùng"
