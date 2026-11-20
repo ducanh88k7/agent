@@ -1,1 +1,129 @@
-"""API HTTP (FastAPI). Chạy: python -m agentic_rag.cli serve   hoặc   uvicorn agentic_rag.app:appapp = FastAPI(title="Agentic RAG", version="0.1.0")app = FastAPI(title="Agentic RAG", version="0.1.0")Lưu ý bảo mật: ở đây user_id lấy từ header X-User-Id để demo. Bản thật PHẢI lấy từ xác thực (JWT/session),app = FastAPI(title="Agentic RAG", version="0.1.0")vì tool get_student_record tin tưởng user_id này. Tool ghi (submit_leave_request) bị tắt khi chạy qua API vì chưa có luồng xác nhận.app = FastAPI(title="Agentic RAG", version="0.1.0")"""app = FastAPI(title="Agentic RAG", version="0.1.0")from __future__ import annotationsapp = FastAPI(title="Agentic RAG", version="0.1.0")app = FastAPI(title="Agentic RAG", version="0.1.0")import osapp = FastAPI(title="Agentic RAG", version="0.1.0")from dataclasses import replaceapp = FastAPI(title="Agentic RAG", version="0.1.0")app = FastAPI(title="Agentic RAG", version="0.1.0")from fastapi import FastAPI, Header, HTTPException, Requestapp = FastAPI(title="Agentic RAG", version="0.1.0")from fastapi.responses import JSONResponse, StreamingResponseapp = FastAPI(title="Agentic RAG", version="0.1.0")from pydantic import BaseModel, Fieldapp = FastAPI(title="Agentic RAG", version="0.1.0")app = FastAPI(title="Agentic RAG", version="0.1.0")from .agent.memory import SessionStore, make_session_storeapp = FastAPI(title="Agentic RAG", version="0.1.0")from .config import Settingsapp = FastAPI(title="Agentic RAG", version="0.1.0")from .factory import build_appapp = FastAPI(title="Agentic RAG", version="0.1.0")app = FastAPI(title="Agentic RAG", version="0.1.0")settings = replace(Settings.from_env(), enable_write_tools=False)app = FastAPI(title="Agentic RAG", version="0.1.0")app = FastAPI(title="Agentic RAG", version="0.1.0")from fastapi.staticfiles import StaticFilesapp = FastAPI(title="Agentic RAG", version="0.1.0")import pathlibapp = FastAPI(title="Agentic RAG", version="0.1.0")app = FastAPI(title="Agentic RAG", version="0.1.0")# Serve static UI from ./frontend (project root)app = FastAPI(title="Agentic RAG", version="0.1.0")frontend_path = pathlib.Path(__file__).parents[0] / ".." / "frontend"app = FastAPI(title="Agentic RAG", version="0.1.0")app = FastAPI(title="Agentic RAG", version="0.1.0")app = FastAPI(title="Agentic RAG", version="0.1.0")app = FastAPI(title="Agentic RAG", version="0.1.0")app.mount("/", StaticFiles(directory=str(frontend_path), html=True), name="frontend")app = FastAPI(title="Agentic RAG", version="0.1.0")_engine = Noneapp = FastAPI(title="Agentic RAG", version="0.1.0")_sessions = make_session_store(settings)app = FastAPI(title="Agentic RAG", version="0.1.0")app = FastAPI(title="Agentic RAG", version="0.1.0")app = FastAPI(title="Agentic RAG", version="0.1.0")def engine():app = FastAPI(title="Agentic RAG", version="0.1.0")    global _engineapp = FastAPI(title="Agentic RAG", version="0.1.0")    if _engine is None:app = FastAPI(title="Agentic RAG", version="0.1.0")        _engine = build_app(settings)app = FastAPI(title="Agentic RAG", version="0.1.0")    return _engineapp = FastAPI(title="Agentic RAG", version="0.1.0")app = FastAPI(title="Agentic RAG", version="0.1.0")app = FastAPI(title="Agentic RAG", version="0.1.0")class ChatRequest(BaseModel):app = FastAPI(title="Agentic RAG", version="0.1.0")    message: str = Field(min_length=1, max_length=4000)app = FastAPI(title="Agentic RAG", version="0.1.0")    session_id: str | None = Field(default=None, max_length=64)app = FastAPI(title="Agentic RAG", version="0.1.0")app = FastAPI(title="Agentic RAG", version="0.1.0")app = FastAPI(title="Agentic RAG", version="0.1.0")@app.exception_handler(HTTPException)app = FastAPI(title="Agentic RAG", version="0.1.0")async def http_error(_: Request, exc: HTTPException):app = FastAPI(title="Agentic RAG", version="0.1.0")    return JSONResponse(status_code=exc.status_code, content={"error": {"code": f"HTTP_{exc.status_code}", "message": str(exc.detail)}})app = FastAPI(title="Agentic RAG", version="0.1.0")app = FastAPI(title="Agentic RAG", version="0.1.0")app = FastAPI(title="Agentic RAG", version="0.1.0")@app.get("/health")app = FastAPI(title="Agentic RAG", version="0.1.0")def health():app = FastAPI(title="Agentic RAG", version="0.1.0")    e = engine()app = FastAPI(title="Agentic RAG", version="0.1.0")    return {"status": "ok", "chunks": e.pipeline.store.count(), "llm": settings.llm_provider, "session_store": settings.session_store}app = FastAPI(title="Agentic RAG", version="0.1.0")app = FastAPI(title="Agentic RAG", version="0.1.0")app = FastAPI(title="Agentic RAG", version="0.1.0")@app.post("/chat")app = FastAPI(title="Agentic RAG", version="0.1.0")def chat(req: ChatRequest, x_user_id: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):app = FastAPI(title="Agentic RAG", version="0.1.0")    expected = os.getenv("API_KEY")app = FastAPI(title="Agentic RAG", version="0.1.0")    if expected and x_api_key != expected:app = FastAPI(title="Agentic RAG", version="0.1.0")        raise HTTPException(401, "API key không hợp lệ")app = FastAPI(title="Agentic RAG", version="0.1.0")    session = _sessions.get(req.session_id, x_user_id)app = FastAPI(title="Agentic RAG", version="0.1.0")    if session.user_id != x_user_id:  # chống dùng session_id của người khácapp = FastAPI(title="Agentic RAG", version="0.1.0")        raise HTTPException(403, "Session không thuộc về người dùng này")app = FastAPI(title="Agentic RAG", version="0.1.0")    ans = engine().ask(req.message, session, user_id=x_user_id)app = FastAPI(title="Agentic RAG", version="0.1.0")    return {**ans.to_dict(), "session_id": session.id}app = FastAPI(title="Agentic RAG", version="0.1.0")app = FastAPI(title="Agentic RAG", version="0.1.0")app = FastAPI(title="Agentic RAG", version="0.1.0")@app.post("/chat/stream")app = FastAPI(title="Agentic RAG", version="0.1.0")def chat_stream(req: ChatRequest, x_user_id: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):app = FastAPI(title="Agentic RAG", version="0.1.0")    expected = os.getenv("API_KEY")app = FastAPI(title="Agentic RAG", version="0.1.0")    if expected and x_api_key != expected:app = FastAPI(title="Agentic RAG", version="0.1.0")        raise HTTPException(401, "API key không hợp lệ")app = FastAPI(title="Agentic RAG", version="0.1.0")    session = _sessions.get(req.session_id, x_user_id)app = FastAPI(title="Agentic RAG", version="0.1.0")    if session.user_id != x_user_id:app = FastAPI(title="Agentic RAG", version="0.1.0")        raise HTTPException(403, "Session không thuộc về người dùng này")app = FastAPI(title="Agentic RAG", version="0.1.0")app = FastAPI(title="Agentic RAG", version="0.1.0")    def event_generator():app = FastAPI(title="Agentic RAG", version="0.1.0")        for event in engine().ask_stream(req.message, session, user_id=x_user_id):app = FastAPI(title="Agentic RAG", version="0.1.0")            yield event.to_sse()app = FastAPI(title="Agentic RAG", version="0.1.0")app = FastAPI(title="Agentic RAG", version="0.1.0")    return StreamingResponse(app = FastAPI(title="Agentic RAG", version="0.1.0")        event_generator(),app = FastAPI(title="Agentic RAG", version="0.1.0")        media_type="text/event-stream",app = FastAPI(title="Agentic RAG", version="0.1.0")        headers={app = FastAPI(title="Agentic RAG", version="0.1.0")            "Cache-Control": "no-cache",app = FastAPI(title="Agentic RAG", version="0.1.0")            "Connection": "keep-alive",app = FastAPI(title="Agentic RAG", version="0.1.0")            "X-Accel-Buffering": "no",app = FastAPI(title="Agentic RAG", version="0.1.0")        },app = FastAPI(title="Agentic RAG", version="0.1.0")    )app = FastAPI(title="Agentic RAG", version="0.1.0")
+"""API HTTP (FastAPI). Chạy: python -m agentic_rag.cli serve   hoặc   uvicorn agentic_rag.app:app"""
+
+from __future__ import annotations
+
+import os
+import time
+from dataclasses import replace
+
+from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+import pathlib
+
+from pydantic import BaseModel, Field
+
+from .agent.memory import SessionStore, make_session_store
+from .config import Settings
+from .factory import build_app
+
+# -------------------------------------------------
+# Configuration & FastAPI app
+# -------------------------------------------------
+settings = replace(Settings.from_env(), enable_write_tools=False)
+app = FastAPI(title="Agentic RAG", version="0.1.0")
+
+# Serve simple UI for SSE demo (frontend/index.html)
+frontend_path = pathlib.Path(__file__).parents[0] / ".." / "frontend"
+app.mount("/", StaticFiles(directory=str(frontend_path), html=True), name="frontend")
+
+_engine = None
+_sessions = make_session_store(settings)
+
+def engine():
+    global _engine
+    if _engine is None:
+        _engine = build_app(settings)
+    return _engine
+
+# -------------------------------------------------
+# Request models
+# -------------------------------------------------
+class ChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+    session_id: str | None = Field(default=None, max_length=64)
+
+# -------------------------------------------------
+# Error handling
+# -------------------------------------------------
+@app.exception_handler(HTTPException)
+async def http_error(_: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": {"code": f"HTTP_{exc.status_code}", "message": str(exc.detail)}},
+    )
+
+# -------------------------------------------------
+# Health endpoint
+# -------------------------------------------------
+@app.get("/health")
+def health():
+    e = engine()
+    return {
+        "status": "ok",
+        "chunks": e.pipeline.store.count(),
+        "llm": settings.llm_provider,
+        "session_store": settings.session_store,
+    }
+
+# -------------------------------------------------
+# Synchronous chat endpoint
+# -------------------------------------------------
+@app.post("/chat")
+def chat(
+    req: ChatRequest,
+    x_user_id: str | None = Header(default=None),
+    x_api_key: str | None = Header(default=None),
+):
+    expected = os.getenv("API_KEY")
+    if expected and x_api_key != expected:
+        raise HTTPException(401, "API key không hợp lệ")
+    session = _sessions.get(req.session_id, x_user_id)
+    if session.user_id != x_user_id:
+        raise HTTPException(403, "Session không thuộc về người dùng này")
+    ans = engine().ask(req.message, session, user_id=x_user_id)
+    return {**ans.to_dict(), "session_id": session.id}
+
+# -------------------------------------------------
+# Streaming chat endpoint (SSE) – includes TTFT measurement
+# -------------------------------------------------
+@app.post("/chat/stream")
+def chat_stream(
+    req: ChatRequest,
+    x_user_id: str | None = Header(default=None),
+    x_api_key: str | None = Header(default=None),
+):
+    expected = os.getenv("API_KEY")
+    if expected and x_api_key != expected:
+        raise HTTPException(401, "API key không hợp lệ")
+    session = _sessions.get(req.session_id, x_user_id)
+    if session.user_id != x_user_id:
+        raise HTTPException(403, "Session không thuộc về người dùng này")
+
+    request_start = time.time()
+
+    def event_generator():
+        first = True
+        for event in engine().ask_stream(req.message, session, user_id=x_user_id):
+            if first:
+                ttft_ms = int((time.time() - request_start) * 1000)
+                # Thêm TTFT vào metadata của event đầu tiên
+                if hasattr(event, "metadata") and isinstance(event.metadata, dict):
+                    event.metadata["ttft_ms"] = ttft_ms
+                else:
+                    try:
+                        event = event.copy(update={"metadata": {"ttft_ms": ttft_ms}})
+                    except Exception:
+                        pass
+                first = False
+            yield event.to_sse()
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
