@@ -24,7 +24,7 @@ settings = replace(Settings.from_env(), enable_write_tools=False)
 app = FastAPI(title="Agentic RAG", version="0.1.0")
 
 # Serve simple UI for SSE demo (frontend/index.html)
-frontend_path = pathlib.Path(__file__).parents[0] / ".." / "frontend"
+frontend_path = pathlib.Path(__file__).parents[2] / "frontend"
 app.mount("/", StaticFiles(directory=str(frontend_path), html=True), name="frontend")
 
 _engine = None
