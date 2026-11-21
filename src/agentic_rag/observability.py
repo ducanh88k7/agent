@@ -46,6 +46,7 @@ class Tracer:
         self._t0 = time.monotonic()
         self._lock = threading.Lock()
         self._root = None  # span gốc của trace (v3/v4)
+        self._last_t = 0.0  # mốc thời gian của sự kiện trước, để tính dt
 
         has_keys = bool(
             Langfuse is not None
@@ -81,6 +82,10 @@ class Tracer:
     # -------------------------------------------------------------------------
     def event(self, kind: str, **data) -> None:
         """Ghi một sự kiện; nếu Langfuse đang chạy thì đẩy span lên cloud."""
+        now = round(time.monotonic() - self._t0, 2)
+        with self._lock:
+            dt = round(now - self._last_t, 2)  # thời gian trôi qua kể từ sự kiện trước = thời gian của bước này
+            self._last_t = now
         if _LANGFUSE_V2 and self.trace is not None:
             try:
                 span = self.trace.span(name=kind, metadata=data)
@@ -89,7 +94,7 @@ class Tracer:
                 pass
         elif _LANGFUSE_V3 and self._root is not None:
             try:
-                meta = json.loads(json.dumps({"t": round(time.monotonic() - self._t0, 2), **data}, ensure_ascii=False, default=str))
+                meta = json.loads(json.dumps({"t": now, "dt": dt, **data}, ensure_ascii=False, default=str))
                 kw: dict = {"name": kind, "as_type": _LF_TYPES.get(kind, "span"), "metadata": meta}
                 if kind == "error":
                     kw["level"] = "ERROR"
@@ -99,7 +104,7 @@ class Tracer:
             except Exception:
                 pass
 
-        ev = {"t": round(time.monotonic() - self._t0, 2), "kind": kind, **data}
+        ev = {"t": now, "kind": kind, **data}
         with self._lock:
             self.events.append(ev)
         if self.verbose:
