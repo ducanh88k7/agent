@@ -14,4 +14,4 @@ google-genai>=1.0        # Gemini (free tier)
 # sentence-transformers>=3.0   # BGE-M3 + bge-reranker-v2-m3 (tải model vài GB)
 pgvector>=0.3.0
 psycopg[binary]>=3.1.0
-langfuse>=2.0.0
+langfuse>=4.18,<5

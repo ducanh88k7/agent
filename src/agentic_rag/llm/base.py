@@ -5,12 +5,16 @@ hay thêm nhà cung cấp khác chỉ cần viết thêm một adapter, không s
 """
 from __future__ import annotations
 
+import imp
 import json
 import re
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
+import logging
+import collections, os, threading
+
 
 from ..retry import retry_call
 
@@ -88,8 +92,17 @@ class LLMClient(ABC):
              model: str | None = None, max_tokens: int = 2048, temperature: float | None = None,
              json_mode: bool = False) -> LLMResponse:
         model = model or self.default_model
-        return retry_call(lambda: self._chat(messages, system, tools, model, max_tokens, temperature, json_mode),
-                          sleep=self._sleep)
+        def attempt():
+            _limiter.wait(_rpm(), self._sleep)   # mỗi lần thử, kể cả retry, đều tính vào hạn mức
+            return self._chat(messages, system, tools, model, max_tokens, temperature, json_mode)
+
+        t0 = time.monotonic()
+        try:
+            return retry_call(attempt, sleep=self._sleep)
+        finally:
+            dt = time.monotonic() - t0
+            if dt > 5:
+                logging.getLogger("agentic_rag.llm").warning("[llm] %s mất %.1fs (%d tin nhắn)", model, dt, len(messages))
 
     def _chat_stream(self, messages: list[Message], system: str, tools: list[ToolSpec] | None, model: str,
                      max_tokens: int, temperature: float | None):
@@ -103,6 +116,7 @@ class LLMClient(ABC):
     def chat_stream(self, messages: list[Message], *, system: str = "", tools: list[ToolSpec] | None = None,
                     model: str | None = None, max_tokens: int = 2048, temperature: float | None = None):
         model = model or self.default_model
+        _limiter.wait(_rpm(), self._sleep)
         return self._chat_stream(messages, system, tools, model, max_tokens, temperature)
 
 
@@ -154,3 +168,28 @@ def complete_json(llm: LLMClient, *, system: str, prompt: str, model: str | None
         resp = llm.chat(messages, system=system, model=model, max_tokens=max_tokens, temperature=0.0, json_mode=True)
         usage.add(resp.usage)
         return extract_json(resp.text), usage  # nếu vẫn lỗi thì ValueError, caller tự xử lý fallback
+
+class _RateLimiter:
+    """Giữ số lần gọi LLM trong mọi cửa sổ 60 giây <= rpm."""
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._calls = collections.deque()
+
+    def wait(self, rpm, sleep=time.sleep):
+        if rpm <= 0:
+            return
+        while True:
+            with self._lock:
+                now = time.monotonic()
+                while self._calls and now - self._calls[0] >= 60:
+                    self._calls.popleft()
+                if len(self._calls) < rpm:
+                    self._calls.append(now)
+                    return
+                delay = 60 - (now - self._calls[0]) + 0.05
+            sleep(delay)
+
+_limiter = _RateLimiter()
+
+def _rpm() -> int:
+    return int(os.getenv("LLM_RPM", "0") or 0)

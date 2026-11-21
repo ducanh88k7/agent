@@ -5,13 +5,18 @@ import random
 import re
 import time
 from typing import Callable, TypeVar
+import logging
 
 T = TypeVar("T")
 _CODES = {408, 429, 500, 502, 503, 504, 529}
 _PATTERN = re.compile(r"\b(429|500|502|503|504|529)\b|rate.?limit|resource_exhausted|overloaded|unavailable|timed? ?out", re.I)
+_RETRY_IN = re.compile(r"retry in ([\d.]+)\s*s", re.I)
 
+log = logging.getLogger("agentic_rag.retry")
 
 def is_retryable(exc: Exception) -> bool:
+    if re.search(r"per ?day", str(exc), re.I):   # hết quota theo ngày: thử lại cũng vô ích
+     return False
     for attr in ("status_code", "code", "status"):
         v = getattr(exc, attr, None)
         if isinstance(v, int) and v in _CODES:
@@ -27,5 +32,10 @@ def retry_call(fn: Callable[[], T], *, attempts: int = 4, base_delay: float = 2.
         except Exception as e:  # noqa: BLE001
             if i == attempts - 1 or not is_retryable(e):
                 raise
-            sleep(base_delay * (2 ** i) + random.uniform(0, 0.5))
+            delay = base_delay * (2 ** i) + random.uniform(0, 0.5)
+            m = _RETRY_IN.search(str(e))
+            if m:
+                delay = max(delay, min(float(m.group(1)) + 0.5, 60))
+            log.warning("[retry] lần %d/%d: %s: %s -> ngủ %.1fs", i + 1, attempts, type(e).__name__, str(e)[:160], delay)
+            sleep(delay)
     raise RuntimeError("unreachable")

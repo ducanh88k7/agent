@@ -1,46 +1,117 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="vi">
+
 <head>
   <meta charset="UTF-8" />
-  <title>Agentic RAG Demo</title>
+  <title>Agentic RAG Demo (SSE)</title>
   <style>
-    body {font-family: Arial, sans-serif; margin: 2rem;}
-    #log {white-space: pre-wrap; border: 1px solid #ccc; padding: 1rem; height: 300px; overflow-y: auto;}
-    button {margin-top: 0.5rem;}
+    body {
+      font-family: Arial, sans-serif;
+      margin: 2rem;
+    }
+
+    #log {
+      background: #f9f9f9;
+      border: 1px solid #ccc;
+      padding: 1rem;
+      height: 300px;
+      overflow: auto;
+      white-space: pre-wrap;
+    }
+
+    button {
+      margin-top: 0.5rem;
+    }
   </style>
 </head>
+
 <body>
-  <h1>Agentic RAG Chat (SSE)</h1>
-  <textarea id="msg" rows="3" cols="60" placeholder="Nhập câu hỏi..."></textarea><br />
+  <h1>Agentic RAG Chat (SSE)</h1>
+  <textarea id="msg" rows="3" cols="60" placeholder="Nhập câu hỏi…"></textarea><br />
   <button id="send">Gửi</button>
+
   <h2>Kết quả</h2>
+  <div id="status" style="color:#666;margin:.5rem 0"></div>
   <div id="log"></div>
 
   <script>
     const logDiv = document.getElementById('log');
     const sendBtn = document.getElementById('send');
-    const msgInput = document.getElementById('msg');
+    const msgInp = document.getElementById('msg');
 
-    sendBtn.onclick = () => {
-      const message = msgInput.value.trim();
+    // ---- SETTINGS -------------------------------------------------
+    const USER_ID = 'demo-user';            // <‑‑ thay đổi nếu cần
+    const API_KEY = '';                     // nếu bạn bật API_KEY trong .env, đặt ở đây (không có thì để rỗng)
+    // ----------------------------------------------------------------
+
+    sendBtn.onclick = async () => {
+      const message = msgInp.value.trim();
       if (!message) return;
-      logDiv.textContent = '';
-      const es = new EventSource(`/chat/stream?message=${encodeURIComponent(message)}`);
-      es.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data);
-          // Show raw event JSON; could format nicer
-          logDiv.textContent += JSON.stringify(data, null, 2) + '\n';
-          // If server sent a finish flag, close connection
-          if (data.kind === 'assistant' && data.metadata?.finished) {
-            es.close();
+      logDiv.textContent = '';   // xoá log cũ
+
+      // POST JSON body
+      const resp = await fetch('/chat/stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Id': USER_ID,
+          ...(API_KEY && { 'X-Api-Key': API_KEY })
+        },
+        body: JSON.stringify({ message, session_id: null })
+      });
+
+      if (!resp.ok) {
+        logDiv.textContent = `❌ Lỗi ${resp.status}: ${await resp.text()}`;
+        return;
+      }
+
+      // Read SSE stream manually
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        // SSE events are separated by "\n\n"
+        let parts = buffer.split('\n\n');
+        // Keep last (possibly incomplete) part in buffer
+        buffer = parts.pop() || '';
+        const statusDiv = document.getElementById('status');
+        const t0 = performance.now();
+        const label = d => ({
+          routing: 'Đang định tuyến câu hỏi...',
+          routed: `Route: ${d.route}${d.reason ? ' — ' + d.reason : ''}`,
+          retrieving: `Đang tìm tài liệu: ${d.query}`,
+          retrieved: `Tìm được ${d.passages_found} đoạn`,
+          plan_steps: 'Kế hoạch: ' + (d.steps || []).map(s => s.goal).join(' → '),
+        }[d.stage] || d.message || d.stage);
+
+        for (const part of parts) {
+          let evt = 'message', dataStr = '';
+          for (const line of part.split('\n')) {
+            if (line.startsWith('event:')) evt = line.slice(6).trim();
+            else if (line.startsWith('data:')) dataStr += line.slice(5).trim();
           }
-        } catch (_) {
-          logDiv.textContent += e.data + '\n';
+          if (!dataStr) continue;
+          const data = JSON.parse(dataStr);
+          const sec = ((performance.now() - t0) / 1000).toFixed(1);
+          if (evt === 'status') {
+            statusDiv.textContent = `[${sec}s] ` + label(data);
+          } else if (evt === 'token') {
+            logDiv.textContent += data.chunk;
+          } else if (evt === 'done') {
+            statusDiv.textContent = '';
+            logDiv.textContent = data.answer +
+              `\n\n⏱ route=${data.route} | chữ đầu tiên sau ${Math.round(data.ttft_ms)}ms | tổng ${Math.round(data.total_time_ms)}ms`;
+            if (data.sources?.length)
+              logDiv.textContent += '\n\nNguồn:\n' + data.sources.map(s => '- ' + (s.label || JSON.stringify(s))).join('\n');
+          }
         }
-      };
-      es.onerror = () => { es.close(); };
+      }
     };
   </script>
 </body>
+
 </html>

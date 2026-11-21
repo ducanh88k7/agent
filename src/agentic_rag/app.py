@@ -7,8 +7,9 @@ import time
 from dataclasses import replace
 
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 import pathlib
 
 from pydantic import BaseModel, Field
@@ -22,10 +23,15 @@ from .factory import build_app
 # -------------------------------------------------
 settings = replace(Settings.from_env(), enable_write_tools=False)
 app = FastAPI(title="Agentic RAG", version="0.1.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],        # cho mọi origin (development); hạn chế khi production
+    allow_methods=["*"],        # GET, POST, OPTIONS, v.v.
+    allow_headers=["*"],        # Accept, Content-Type, X-User-Id, X-Api-Key …
+)
 
 # Serve simple UI for SSE demo (frontend/index.html)
 frontend_path = pathlib.Path(__file__).parents[2] / "frontend"
-app.mount("/", StaticFiles(directory=str(frontend_path), html=True), name="frontend")
 
 _engine = None
 _sessions = make_session_store(settings)
@@ -127,3 +133,5 @@ def chat_stream(
             "X-Accel-Buffering": "no",
         },
     )
+if frontend_path.exists():
+    app.mount("/", StaticFiles(directory=str(frontend_path), html=True), name="frontend")

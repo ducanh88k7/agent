@@ -73,8 +73,11 @@ class GeminiClient(LLMClient):
             cfg["automatic_function_calling"] = types.AutomaticFunctionCallingConfig(disable=True)  # ta tự chạy tool
         elif json_mode:
             cfg["response_mime_type"] = "application/json"
-        resp = self.client.models.generate_content(model=model, contents=self._convert(messages, types),
-                                                   config=types.GenerateContentConfig(**cfg))
+        try:
+            resp = self.client.models.generate_content(model=model, contents=self._convert(messages, types),
+                                                config=types.GenerateContentConfig(**cfg))
+        except Exception as e:
+            raise LLMError(f"Gemini lỗi: {e}") from e
         if not resp.candidates or resp.candidates[0].content is None:
             raise LLMError(f"Gemini không trả nội dung (có thể bị chặn): {getattr(resp, 'prompt_feedback', None)}")
         content = resp.candidates[0].content
