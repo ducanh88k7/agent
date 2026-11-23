@@ -90,7 +90,7 @@ class LLMClient(ABC):
 
     def chat(self, messages: list[Message], *, system: str = "", tools: list[ToolSpec] | None = None,
              model: str | None = None, max_tokens: int = 2048, temperature: float | None = None,
-             json_mode: bool = False) -> LLMResponse:
+             json_mode: bool = False, trace_label: str | None = None) -> LLMResponse:
         model = model or self.default_model
         def attempt():
             _limiter.wait(_rpm(), self._sleep)   # mỗi lần thử, kể cả retry, đều tính vào hạn mức

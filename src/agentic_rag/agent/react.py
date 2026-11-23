@@ -62,10 +62,8 @@ class ReActAgent:
             if why:
                 return self._force_finish(messages, why, step - 1, n_tools, budget, "budget")
             resp = self.llm.chat(messages, system=self.spec.system_prompt, tools=specs, model=self.spec.model,
-                                 max_tokens=self.s.max_output_tokens)
+                                 max_tokens=self.s.max_output_tokens,trace_label=f"{self.spec.name}#{step}")
             budget.charge_llm(resp.usage)
-            self.tracer.event("llm", agent=self.spec.name, step=step, tokens_in=resp.usage.input_tokens,
-                              tokens_out=resp.usage.output_tokens, tool_calls=[c.name for c in resp.tool_calls])
             messages.append(resp.to_message())
 
             if not resp.tool_calls:  # không gọi tool nữa => đây là câu trả lời
@@ -133,6 +131,6 @@ class ReActAgent:
         self.tracer.event("budget", reason=why, stop=stop)
         messages = list(messages) + [Message("user", f"[Hệ thống] Dừng gọi công cụ ({why}). Dựa trên thông tin đã thu thập, hãy đưa ra "
                                                      "câu trả lời tốt nhất có thể và nói rõ phần nào chưa chắc chắn hoặc chưa tìm được.")]
-        resp = self.llm.chat(messages, system=self.spec.system_prompt, tools=None, model=self.spec.model, max_tokens=self.s.max_output_tokens)
+        resp = self.llm.chat(messages, system=self.spec.system_prompt, tools=None, model=self.spec.model, max_tokens=self.s.max_output_tokens,trace_label=f"{self.spec.name}#final")
         budget.charge_llm(resp.usage)
         return AgentRun(resp.text.strip(), "partial", stop, steps, n_tools, messages)

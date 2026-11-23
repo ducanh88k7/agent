@@ -35,7 +35,9 @@ except Exception:
 
 
 # kind của sự kiện -> loại observation hiển thị trong Langfuse
-_LF_TYPES = {"llm": "generation", "tool": "tool", "retrieve": "retriever"}
+_MAX_IO = 8000  # cắt bớt nội dung câu hỏi/trả lời gửi lên Langfuse
+
+_LF_TYPES = {"llm": "generation", "llm_call": "generation", "tool": "tool", "retrieve": "retriever"}
 
 
 class Tracer:
@@ -98,8 +100,10 @@ class Tracer:
                 kw: dict = {"name": kind, "as_type": _LF_TYPES.get(kind, "span"), "metadata": meta}
                 if kind == "error":
                     kw["level"] = "ERROR"
-                if kind == "llm" and "tokens_in" in data:
+                if kind in ("llm", "llm_call") and "tokens_in" in data:
                     kw["usage_details"] = {"input": int(data.get("tokens_in") or 0), "output": int(data.get("tokens_out") or 0)}
+                if kind == "llm_call" and data.get("model"):
+                    kw["model"] = str(data["model"])
                 self._root.start_observation(**kw).end()
             except Exception:
                 pass
@@ -118,6 +122,29 @@ class Tracer:
             for k, v in d.items()
         )
         return f"  [{ev['t']:6.2f}s] {ev['kind'].upper():<8} {body}".replace("\n", " ")
+
+    def set_io(self, input=None, output=None) -> None:
+        """Gắn câu hỏi (input) / câu trả lời (output) lên trace để xem ngay trên Langfuse.
+
+        Tắt bằng biến môi trường TRACE_CONTENT=0 (nội dung có thể chứa dữ liệu cá nhân và sẽ được gửi lên Langfuse Cloud).
+        """
+        if os.getenv("TRACE_CONTENT", "1").strip().lower() in ("0", "false", "no", "off"):
+            return
+        kw = {}
+        if input is not None:
+            kw["input"] = str(input)[:_MAX_IO]
+        if output is not None:
+            kw["output"] = str(output)[:_MAX_IO]
+        if not kw:
+            return
+        try:
+            if _LANGFUSE_V3 and self._root is not None:
+                self._root.update(**kw)         # input/output của span gốc
+                self._root.set_trace_io(**kw)   # input/output của cả trace (cột Input/Output ở danh sách Traces)
+            elif _LANGFUSE_V2 and self.trace is not None:
+                self.trace.update(**kw)
+        except Exception:
+            pass
 
     def flush(self) -> str | None:
         """Ghi file trace + đóng kết nối Langfuse."""

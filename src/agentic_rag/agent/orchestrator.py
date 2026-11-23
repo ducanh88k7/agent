@@ -1,14 +1,17 @@
 """Điều phối một lượt hỏi: guardrail -> router -> (direct | rag | agent | plan | clarify) -> kiểm tra trích dẫn + critic -> trả lời."""
 from __future__ import annotations
 
+import imp
 import json
 import logging
 import re
 import time
+import copy
+
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Iterator
-
+from ..llm.traced import TracedLLM
 from ..llm.base import LLMClient, LLMError, Message
 from ..observability import Tracer
 from ..retrieval.pipeline import RAGPipeline
@@ -62,6 +65,8 @@ class AgenticRAG:
         session = session or Session(user_id=user_id, max_turns=s.history_turns)
         user_id = user_id or session.user_id
         tracer = Tracer(verbose=verbose, sink_dir=s.trace_dir)
+        self = self._bind(tracer)   
+        tracer.set_io(input=question)
         budget = Budget.from_settings(s)
         evidence = EvidenceStore()
         today = date.fromisoformat(s.today) if s.today else date.today()
@@ -102,6 +107,7 @@ class AgenticRAG:
             text, warnings = "Xin lỗi, đã có lỗi khi xử lý câu hỏi. Bạn vui lòng thử lại.", ["internal_error"]
         else:
             session.add_turn(question, text)
+        tracer.set_io(output=text)
         tracer.flush()
         u = budget.usage
         return Answer(text, route, evidence.sources_for(text), warnings, tracer.trace_id,
@@ -122,6 +128,8 @@ class AgenticRAG:
         session = session or Session(user_id=user_id, max_turns=s.history_turns)
         user_id = user_id or session.user_id
         tracer = Tracer(verbose=verbose, sink_dir=s.trace_dir)
+        self = self._bind(tracer)
+        tracer.set_io(input=question)
         budget = Budget.from_settings(s)
         evidence = EvidenceStore()
         today = date.fromisoformat(s.today) if s.today else date.today()
@@ -224,6 +232,7 @@ class AgenticRAG:
         else:
             session.add_turn(question, final_text)
 
+        tracer.set_io(output=final_text)
         tracer.flush()
         total_time_ms = round((time.monotonic() - t0) * 1000, 2)
         ttft_ms = round((first_token_time - t0) * 1000, 2) if first_token_time else total_time_ms
@@ -309,3 +318,7 @@ class AgenticRAG:
             feedback = "; ".join(problems) + (f". {verdict.feedback}" if verdict and verdict.feedback else "")
             answer = critic.revise(q, answer, feedback, ev, budget)
         return answer, warnings
+    def _bind(self, tracer):
+        bound = copy.copy(self)
+        bound.llm = TracedLLM(self.llm, tracer)
+        return bound
